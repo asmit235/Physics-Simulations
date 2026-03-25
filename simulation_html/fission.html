@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quantum Atomic Fission</title>
+  <style>
+    body {
+      background: #020205;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: monospace;
+      padding: 15px;
+      box-sizing: border-box;
+      color: #00E5FF;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 800px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      background: #000;
+      display: block;
+      box-shadow: 0 0 30px rgba(0, 229, 255, 0.1);
+      cursor: crosshair;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 15px;
+      padding: 10px 20px;
+      background: rgba(0, 229, 255, 0.05);
+      border-radius: 8px;
+      border: 1px solid rgba(0, 229, 255, 0.1);
+    }
+    button {
+      background: #003344;
+      color: #00E5FF;
+      border: 1px solid #00E5FF;
+      padding: 6px 12px;
+      font-family: monospace;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      background: #00E5FF;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <div class="header">
+    <h2>QUANTUM FISSION SIMULATOR</h2>
+    <p>Click inside the reactor to fire a wave packet (neutron).</p>
+  </div>
+  
+  <canvas id="reactorCanvas" width="800" height="500"></canvas>
+  
+  <div class="controls">
+    <span id="stats">Atoms: 0 | Wave Packets: 0</span>
+    <button onclick="initCore()">Reset Reactor Core</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('reactorCanvas');
+const ctx = canvas.getContext('2d');
+const statsUI = document.getElementById('stats');
+
+const W = canvas.width;
+const H = canvas.height;
+
+// Physics Constants
+const NUM_ATOMS = 100;
+const ATOM_RADIUS = 16;
+const CORE_RADIUS = 3;
+const NEUTRON_SPEED = 5;
+const NEUTRONS_PER_SPLIT = 3;
+
+let atoms = [];
+let wavePackets = [];
+let globalTick = 0;
+
+// Quantum Atom Class
+class QuantumAtom {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.phase = Math.random() * Math.PI * 2; // Random starting pulse phase
+    this.active = true;
+  }
+
+  draw(ctx, tick) {
+    // Calculate a pulsing radius for the electron cloud
+    const pulse = Math.sin(this.phase + tick * 0.05) * 2;
+    const currentRadius = ATOM_RADIUS + pulse;
+
+    // Create a radial gradient for the "Probability Cloud"
+    const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, currentRadius);
+    gradient.addColorStop(0, 'rgba(0, 255, 255, 0.9)');    // Dense near center
+    gradient.addColorStop(0.3, 'rgba(0, 150, 255, 0.4)');  // Mid cloud
+    gradient.addColorStop(1, 'rgba(0, 20, 50, 0)');        // Fades to nothing
+
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw the solid nucleus
+    ctx.fillStyle = '#FF3D00';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, CORE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Wave Packet (Neutron) Class
+class WavePacket {
+  constructor(x, y, angle) {
+    this.x = x;
+    this.y = y;
+    this.vx = Math.cos(angle) * NEUTRON_SPEED;
+    this.vy = Math.sin(angle) * NEUTRON_SPEED;
+    this.age = 0;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.age++;
+  }
+
+  draw(ctx) {
+    // Add a slight perpendicular wobble to simulate a quantum wave
+    const wobble = Math.sin(this.age * 0.5) * 1.5;
+    const drawX = this.x - (this.vy / NEUTRON_SPEED) * wobble; // Perpendicular vector X
+    const drawY = this.y + (this.vx / NEUTRON_SPEED) * wobble; // Perpendicular vector Y
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#00E5FF';
+    ctx.beginPath();
+    ctx.arc(drawX, drawY, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0; // Reset shadow so it doesn't slow down the rest of the drawing
+  }
+}
+
+// Initialize the simulation
+function initCore() {
+  atoms = [];
+  wavePackets = [];
+  
+  // Distribute atoms randomly, keeping them away from the extreme edges
+  for (let i = 0; i < NUM_ATOMS; i++) {
+    const x = 30 + Math.random() * (W - 60);
+    const y = 30 + Math.random() * (H - 60);
+    atoms.push(new QuantumAtom(x, y));
+  }
+  updateStats();
+}
+
+// User interaction: Fire a wave packet
+canvas.addEventListener('mousedown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  
+  const clickX = (e.clientX - rect.left) * scaleX;
+  const clickY = (e.clientY - rect.top) * scaleY;
+  
+  const randomAngle = Math.random() * Math.PI * 2;
+  wavePackets.push(new WavePacket(clickX, clickY, randomAngle));
+});
+
+function updateStats() {
+  statsUI.textContent = `Atoms: ${atoms.length} | Wave Packets: ${wavePackets.length}`;
+}
+
+// Main Animation Loop
+function animate() {
+  globalTick++;
+
+  // 1. Motion Blur Effect: Draw a translucent black rectangle instead of clearing
+  ctx.fillStyle = 'rgba(2, 2, 5, 0.25)';
+  ctx.fillRect(0, 0, W, H);
+
+  // 2. Draw Atoms
+  for (let i = atoms.length - 1; i >= 0; i--) {
+    atoms[i].draw(ctx, globalTick);
+  }
+
+  // 3. Update, Draw, and Check Collisions for Wave Packets
+  // Loop backwards to safely remove items from the array (Memory Optimization)
+  for (let i = wavePackets.length - 1; i >= 0; i--) {
+    let wp = wavePackets[i];
+    wp.update();
+    wp.draw(ctx);
+
+    // Garbage Collection: Remove if off-screen
+    if (wp.x < 0 || wp.x > W || wp.y < 0 || wp.y > H) {
+      wavePackets.splice(i, 1);
+      continue;
+    }
+
+    // Collision Check with Atoms
+    let collided = false;
+    for (let j = atoms.length - 1; j >= 0; j--) {
+      let atom = atoms[j];
+      // Using Math.hypot for fast, safe distance calculation
+      let distance = Math.hypot(wp.x - atom.x, wp.y - atom.y);
+      
+      // If the packet hits the denser part of the probability cloud
+      if (distance < ATOM_RADIUS * 0.8) {
+        
+        // Fission Event!
+        atoms.splice(j, 1);       // Destroy Atom
+        wavePackets.splice(i, 1); // Destroy original Wave Packet
+        collided = true;
+        
+        // Spawn new wave packets
+        for (let k = 0; k < NEUTRONS_PER_SPLIT; k++) {
+          const newAngle = Math.random() * Math.PI * 2;
+          wavePackets.push(new WavePacket(atom.x, atom.y, newAngle));
+        }
+        
+        // Visual flash effect on collision
+        ctx.fillStyle = '#FFffff';
+        ctx.beginPath();
+        ctx.arc(atom.x, atom.y, ATOM_RADIUS * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        break; // Stop checking this wave packet against other atoms
+      }
+    }
+  }
+
+  // Only update text occasionally to save UI rendering overhead
+  if (globalTick % 10 === 0) updateStats();
+
+  requestAnimationFrame(animate);
+}
+
+// Start everything up
+initCore();
+animate();
+</script>
+</body>
+</html>

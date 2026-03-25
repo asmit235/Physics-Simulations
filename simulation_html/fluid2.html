@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Fluid Dynamics & Interference</title>
+  <style>
+    body {
+      background: #050505;
+      color: #fff;
+      font-family: monospace;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .container {
+      max-width: 600px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      width: 600px;
+      height: 400px;
+      /* Base background is the resting color of the fluid */
+      background: #0a5096; 
+      border: 1px solid #333;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 150, 255, 0.2);
+      cursor: crosshair;
+    }
+    .info {
+      margin-top: 15px;
+      font-size: 13px;
+      color: #aaa;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .highlight {
+      color: #00d2ff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <canvas id="waterCanvas" width="300" height="200"></canvas>
+  
+  <div class="info">
+    <span class="highlight">Left-click and drag</span> to generate waves.<br>
+    Observe <span class="highlight">Superposition</span> when multiple ripples cross paths, creating constructive (bright) and destructive (dark) interference.
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('waterCanvas');
+  const ctx = canvas.getContext('2d');
+  
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  // Memory-efficient TypedArrays
+  let currentWaves = new Int32Array(width * height);
+  let previousWaves = new Int32Array(width * height);
+  
+  const pixelData = ctx.createImageData(width, height);
+  const data32 = new Uint32Array(pixelData.data.buffer);
+
+  // Mouse tracking states
+  let isMouseDown = false;
+  let mouseX = 0;
+  let mouseY = 0;
+
+  // Add energy to the fluid grid
+  function disturbSurface(x, y, radius, energy) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy <= radius * radius) {
+          const px = x + dx;
+          const py = y + dy;
+          if (px > 0 && px < width - 1 && py > 0 && py < height - 1) {
+            const index = px + py * width;
+            previousWaves[index] += energy; // Inject kinetic energy
+          }
+        }
+      }
+    }
+  }
+
+  // Mouse Listeners for Left Click
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 0) { // 0 is the left mouse button
+      isMouseDown = true;
+      updateMousePos(e);
+      disturbSurface(mouseX, mouseY, 3, 800);
+    }
+  });
+
+  canvas.addEventListener('mouseup', (e) => {
+    if (e.button === 0) isMouseDown = false;
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    isMouseDown = false;
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (isMouseDown) {
+      updateMousePos(e);
+      disturbSurface(mouseX, mouseY, 3, 400); // Continuous energy while dragging
+    }
+  });
+
+  function updateMousePos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = width / rect.width;
+    const scaleY = height / rect.height;
+    mouseX = Math.floor((e.clientX - rect.left) * scaleX);
+    mouseY = Math.floor((e.clientY - rect.top) * scaleY);
+  }
+
+  function processWaves() {
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = x + y * width;
+        
+        // 1. Calculate Wave Propagation (Superposition & Huygens' Principle)
+        // Bitwise shift >> 1 is a hyper-fast way to divide by 2
+        let waveHeight = (
+          previousWaves[i - 1] + 
+          previousWaves[i + 1] + 
+          previousWaves[i - width] + 
+          previousWaves[i + width]
+        ) >> 1;
+        
+        waveHeight -= currentWaves[i];
+        
+        // 2. Viscous Damping (Friction loss)
+        // Subtracting a small fraction of the wave's height to settle it over time
+        waveHeight -= waveHeight >> 5; 
+        
+        currentWaves[i] = waveHeight;
+        
+        // 3. Realistic Fluid Color Mapping
+        // Base water color: R=10, G=80, B=150
+        // We add the wave height to shift the color. 
+        // Crests (>0) become cyan/white. Troughs (<0) become dark blue.
+        
+        let r = Math.max(0, Math.min(255, 10 + waveHeight));
+        let g = Math.max(0, Math.min(255, 80 + waveHeight));
+        let b = Math.max(0, Math.min(255, 150 + waveHeight));
+        
+        // Write standard ABGR format to the 32-bit pixel buffer for instant rendering
+        data32[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+      }
+    }
+
+    // Swap buffers to move time forward
+    let temp = previousWaves;
+    previousWaves = currentWaves;
+    currentWaves = temp;
+
+    ctx.putImageData(pixelData, 0, 0);
+    requestAnimationFrame(processWaves);
+  }
+
+  // Initialize loop
+  processWaves();
+</script>
+
+</body>
+</html>

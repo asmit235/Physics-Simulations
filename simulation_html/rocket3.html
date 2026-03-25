@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relativistic Space-Time Curvature</title>
+  <style>
+    body {
+      background: #000;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: monospace;
+      padding: 15px;
+      box-sizing: border-box;
+      color: #00ffcc;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 720px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      background: #010103;
+      display: block;
+      box-shadow: 0 4px 50px rgba(0, 255, 204, 0.2);
+      border: 1px solid #00ffcc33;
+    }
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 20px;
+      background: rgba(0, 255, 204, 0.05);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #00ffcc33;
+    }
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    input[type="range"] {
+      flex: 1;
+      accent-color: #00ffcc;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      outline: none;
+    }
+    .telemetry {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 13px;
+      background: rgba(0,0,0,0.6);
+      padding: 12px;
+      border-radius: 6px;
+    }
+    .telemetry span {
+      color: #fff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <canvas id="space" width="720" height="360"></canvas>
+  
+  <div class="dashboard">
+    <div class="slider-group">
+      <label>THRUST (0 to 0.995c)</label>
+      <input type="range" id="throttle" min="0" max="0.995" step="0.005" value="0">
+    </div>
+    
+    <div class="telemetry">
+      <div>Velocity: <span id="v-readout">0.000 c</span></div>
+      <div>Lorentz (γ): <span id="gamma-readout">1.000</span></div>
+      <div>Grid Shrink: <span id="compression-readout">100%</span></div>
+      <div>Curvature: <span id="mass-readout">Normal</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cv = document.getElementById('space');
+  const cx = cv.getContext('2d');
+  const W = 720, H = 360;
+  
+  const ROCKET_X = 150;
+  const ROCKET_Y = H / 2;
+
+  let v = 0; 
+  let gamma = 1; 
+  let distanceTravelled = 0;
+
+  const baseGridSize = 40; 
+  const maxSimulatedSpeed = 800; 
+
+  // The math that bends the grid toward the rocket based on its kinetic energy
+  function warpPoint(x, y) {
+    const dx = x - ROCKET_X;
+    const dy = y - ROCKET_Y;
+    const distSq = dx*dx + dy*dy;
+    const dist = Math.sqrt(distSq);
+
+    // Relativistic Kinetic Energy increases curvature
+    const kineticEnergyFactor = gamma - 1; 
+    
+    // Scale the strength of the "gravity well"
+    const strength = kineticEnergyFactor * 8000; 
+    const softening = 3000; // Prevents division by zero or infinite pinching
+
+    // Calculate how strongly this point is pulled toward the rocket
+    let pull = strength / (distSq + softening);
+    
+    // Cap the distortion so space doesn't turn inside out visually
+    pull = Math.min(pull, 0.85);
+
+    return {
+      x: x - dx * pull,
+      y: y - dy * pull
+    };
+  }
+
+  function drawRocket() {
+    cx.save();
+    cx.translate(ROCKET_X, ROCKET_Y);
+
+    // Relativistic Thruster Flame
+    if (v > 0) {
+      const flameLength = 20 + (v * 150) + (Math.random() * 20);
+      cx.beginPath();
+      cx.moveTo(-30, 0);
+      cx.lineTo(-30 - flameLength, 8);
+      cx.lineTo(-30 - flameLength - 20, 0);
+      cx.lineTo(-30 - flameLength, -8);
+      
+      const flameBlue = Math.floor(v * 255);
+      cx.fillStyle = `rgba(${200 - flameBlue}, 255, 255, ${0.7 + (v * 0.3)})`;
+      
+      // Add a glow effect to the engine
+      cx.shadowBlur = 20 * gamma;
+      cx.shadowColor = `rgba(0, 255, 255, 0.8)`;
+      cx.fill();
+      cx.shadowBlur = 0; // reset
+    }
+
+    // Rocket Body
+    cx.beginPath();
+    cx.moveTo(40, 0);   
+    cx.lineTo(-30, 15); 
+    cx.lineTo(-20, 0);  
+    cx.lineTo(-30, -15);
+    cx.closePath();
+    cx.fillStyle = '#ffffff';
+    cx.fill();
+
+    // Rocket Window
+    cx.beginPath();
+    cx.arc(10, 0, 5, 0, Math.PI * 2);
+    cx.fillStyle = '#00ffcc';
+    cx.fill();
+    
+    cx.restore();
+  }
+
+  function frame() {
+    cx.fillStyle = '#010103';
+    cx.fillRect(0, 0, W, H);
+
+    gamma = 1 / Math.sqrt(1 - (v * v));
+    distanceTravelled += (v * maxSimulatedSpeed);
+
+    // Update Dashboard
+    document.getElementById('v-readout').textContent = v.toFixed(3) + ' c';
+    document.getElementById('gamma-readout').textContent = gamma.toFixed(2);
+    document.getElementById('compression-readout').textContent = (100 / gamma).toFixed(1) + '%';
+    
+    let curveText = "Normal";
+    if (v > 0.5) curveText = "Noticeable";
+    if (v > 0.8) curveText = "High";
+    if (v > 0.95) curveText = "Extreme!";
+    document.getElementById('mass-readout').textContent = curveText;
+
+    // --- DRAW WARPED SPACE-TIME GRID ---
+    cx.save();
+    
+    // Grid colors shift to blue near light speed
+    const blueValue = Math.floor(v * 255);
+    const greenValue = 255 - Math.floor(v * 100);
+    cx.strokeStyle = `rgba(0, ${greenValue}, ${blueValue + 100}, 0.3)`;
+    cx.lineWidth = 1;
+
+    // 1. Horizontal Lines (Segmented to allow bending)
+    for (let y = 0; y <= H; y += baseGridSize) {
+      cx.beginPath();
+      for (let x = 0; x <= W; x += 15) { // Draw in 15px chunks
+        const warped = warpPoint(x, y);
+        if (x === 0) cx.moveTo(warped.x, warped.y);
+        else cx.lineTo(warped.x, warped.y);
+      }
+      cx.stroke();
+    }
+
+    // 2. Vertical Lines (Compressing and Segmenting)
+    let contractedSpacing = baseGridSize / gamma;
+    let visualSpacing = contractedSpacing;
+    let multiplier = 1;
+    
+    // Group lines together if they get too thin to render
+    while (visualSpacing < 5) {
+        multiplier *= 4;
+        visualSpacing = contractedSpacing * multiplier;
+    }
+
+    const offset = (distanceTravelled / gamma) % visualSpacing;
+    cx.lineWidth = multiplier > 1 ? 2 : 1; 
+
+    for (let xBase = W + visualSpacing; xBase > -visualSpacing; xBase -= visualSpacing) {
+      const x = xBase - offset;
+      cx.beginPath();
+      for (let y = 0; y <= H; y += 15) { // Draw in 15px chunks
+        const warped = warpPoint(x, y);
+        if (y === 0) cx.moveTo(warped.x, warped.y);
+        else cx.lineTo(warped.x, warped.y);
+      }
+      cx.stroke();
+    }
+    
+    cx.restore();
+
+    drawRocket();
+    requestAnimationFrame(frame);
+  }
+
+  // Hook up slider
+  document.getElementById('throttle').addEventListener('input', function(e) {
+    v = parseFloat(e.target.value);
+  });
+
+  frame();
+</script>
+</body>
+</html>

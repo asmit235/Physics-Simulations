@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interstellar Black Hole</title>
+  <style>
+    body {
+      background: #000;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      padding: 15px;
+      box-sizing: border-box;
+      color: #ccc;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 800px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      background: #000;
+      display: block;
+      box-shadow: 0 10px 50px rgba(255, 150, 50, 0.1);
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      margin-top: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 20px;
+      border-radius: 8px;
+      justify-content: space-between;
+    }
+    .slider-group {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 200px;
+      gap: 8px;
+    }
+    label {
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      color: #eebb88;
+    }
+    input[type="range"] {
+      accent-color: #ffaa55;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <canvas id="space" width="800" height="500"></canvas>
+  
+  <div class="controls">
+    <div class="slider-group">
+      <label>TIME DILATION (SPEED)</label>
+      <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1">
+    </div>
+    <div class="slider-group">
+      <label>CAMERA TILT</label>
+      <input type="range" id="tilt" min="0.05" max="0.5" step="0.05" value="0.15">
+    </div>
+  </div>
+</div>
+
+<script>
+  const cv = document.getElementById('space');
+  const cx = cv.getContext('2d');
+  const W = 800, H = 500, CX = W / 2, CY = H / 2;
+  
+  const R_BH = 80; // Radius of the Event Horizon
+  const R_INNER = 120; // Inner edge of accretion disk
+  const R_OUTER = 320; // Outer edge of accretion disk
+  
+  let timeSpeed = 1;
+  let cameraTilt = 0.15; // 0 is edge-on, 1 is top-down
+
+  // Generate Accretion Disk Particles
+  const particles = [];
+  const PARTICLE_COUNT = 4000;
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    // Distribute particles heavily towards the inner edge for that bright glow
+    const r = R_INNER + Math.pow(Math.random(), 2) * (R_OUTER - R_INNER);
+    particles.push({
+      radius: r,
+      angle: Math.random() * Math.PI * 2,
+      // Keplerian velocity: closer to the hole = much faster
+      speed: (150 / Math.pow(r, 1.5)), 
+      size: Math.random() * 1.5 + 0.5,
+      brightness: Math.random() * 0.5 + 0.5
+    });
+  }
+
+  // Draw static starfield once for performance
+  const starCanvas = document.createElement('canvas');
+  starCanvas.width = W; starCanvas.height = H;
+  const sc = starCanvas.getContext('2d');
+  for(let i=0; i<300; i++) {
+    sc.fillStyle = `rgba(255,255,255,${Math.random() * 0.5})`;
+    sc.beginPath();
+    sc.arc(Math.random()*W, Math.random()*H, Math.random()*1.2, 0, Math.PI*2);
+    sc.fill();
+  }
+
+  function drawBlackHole() {
+    // The Event Horizon (Pure Black)
+    cx.beginPath();
+    cx.arc(CX, CY, R_BH, 0, Math.PI * 2);
+    cx.fillStyle = '#000000';
+    cx.fill();
+
+    // The Photon Sphere (The faint glowing edge where light barely escapes)
+    const grad = cx.createRadialGradient(CX, CY, R_BH - 2, CX, CY, R_BH + 8);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(0.5, 'rgba(255, 200, 150, 0.8)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    
+    cx.beginPath();
+    cx.arc(CX, CY, R_BH + 8, 0, Math.PI * 2);
+    cx.fillStyle = grad;
+    cx.fill();
+  }
+
+  function frame() {
+    // Clear canvas
+    cx.globalCompositeOperation = 'source-over';
+    cx.fillStyle = '#000';
+    cx.fillRect(0, 0, W, H);
+    cx.drawImage(starCanvas, 0, 0);
+
+    // Arrays to sort particles so we draw Back -> Black Hole -> Front
+    const frontParticles = [];
+    const backParticles = [];
+
+    // Update and sort particles
+    particles.forEach(p => {
+      p.angle -= p.speed * timeSpeed * 0.05; // Spin clockwise
+      if (p.angle < 0) p.angle += Math.PI * 2;
+
+      // Relativistic Doppler Beaming
+      // Left side (pi) approaches viewer = brighter. Right side (0) recedes = dimmer.
+      const doppler = 1 - Math.cos(p.angle) * 0.85; 
+      
+      // Calculate color based on Doppler shift
+      const intensity = Math.floor(255 * doppler * p.brightness * (R_INNER / p.radius));
+      const rColor = Math.min(255, intensity + 50);
+      const gColor = Math.min(255, intensity * 0.6);
+      const bColor = Math.min(255, intensity * 0.3);
+      const alpha = Math.max(0.1, doppler * 0.4);
+      p.color = `rgba(${rColor}, ${gColor}, ${bColor}, ${alpha})`;
+
+      if (p.angle > Math.PI) backParticles.push(p);
+      else frontParticles.push(p);
+    });
+
+    cx.globalCompositeOperation = 'lighter'; // Makes overlapping particles glow like fire
+
+    // 1. DRAW BACK PARTICLES (THE LENSING HALOS)
+    backParticles.forEach(p => {
+      // The magic math for gravitational lensing
+      // It bends the back half of the disk UP over the black hole
+      const warp = Math.abs(Math.sin(p.angle)); 
+      
+      // Interpolate radius: stretch it over the black hole based on the warp
+      const r_apparent = p.radius * (1 - warp) + (R_BH + (p.radius - R_INNER) * 0.35) * warp;
+      
+      const px = Math.cos(p.angle) * r_apparent;
+      // Bend Y upwards heavily
+      const py = Math.sin(p.angle) * r_apparent * (cameraTilt + (1 - cameraTilt) * warp);
+
+      cx.fillStyle = p.color;
+      
+      // Top Halo (bent over)
+      cx.beginPath();
+      cx.arc(CX + px, CY + py, p.size, 0, Math.PI * 2);
+      cx.fill();
+
+      // Bottom Halo (bent under, slightly dimmer to simulate disk underside)
+      cx.globalAlpha = 0.4;
+      cx.beginPath();
+      cx.arc(CX + px, CY - py, p.size * 0.8, 0, Math.PI * 2);
+      cx.fill();
+      cx.globalAlpha = 1.0;
+    });
+
+    // 2. DRAW EVENT HORIZON
+    cx.globalCompositeOperation = 'source-over';
+    drawBlackHole();
+
+    // 3. DRAW FRONT PARTICLES (THE MAIN DISK)
+    cx.globalCompositeOperation = 'lighter';
+    frontParticles.forEach(p => {
+      const px = Math.cos(p.angle) * p.radius;
+      const py = Math.sin(p.angle) * p.radius * cameraTilt;
+
+      cx.fillStyle = p.color;
+      cx.beginPath();
+      cx.arc(CX + px, CY + py, p.size, 0, Math.PI * 2);
+      cx.fill();
+    });
+
+    requestAnimationFrame(frame);
+  }
+
+  // Hook up controls
+  document.getElementById('speed').addEventListener('input', e => timeSpeed = parseFloat(e.target.value));
+  document.getElementById('tilt').addEventListener('input', e => cameraTilt = parseFloat(e.target.value));
+
+  frame();
+</script>
+</body>
+</html>

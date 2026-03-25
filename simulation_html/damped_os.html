@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Damped Harmonic Oscillator</title>
+  <style>
+    body {
+      background: #0a0a0c;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      box-sizing: border-box;
+      color: #e0e0e0;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 760px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      background: #111116;
+      display: block;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      border: 1px solid #2a2a35;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-top: 15px;
+      flex-wrap: wrap;
+      background: #18181f;
+      padding: 15px 20px;
+      border-radius: 8px;
+      border: 1px solid #2a2a35;
+    }
+    .control-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 140px;
+    }
+    .control-item label {
+      font-size: 13px;
+      color: #aaa;
+      white-space: nowrap;
+      width: 50px;
+    }
+    .control-item input {
+      flex: 1;
+      accent-color: #00d2ff;
+    }
+    .control-item span {
+      font-size: 13px;
+      font-weight: bold;
+      min-width: 35px;
+      text-align: right;
+      color: #fff;
+    }
+    button {
+      font-size: 13px;
+      font-weight: bold;
+      padding: 8px 16px;
+      background: #0078d7;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #005a9e;
+    }
+    .status-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #888;
+    }
+    .status-bar span {
+      color: #00d2ff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <div class="status-bar">
+    <div>Damping Type: <span id="damping-type">Underdamped</span></div>
+    <div>Critical Damping (b): <span id="critical-b">6.32</span></div>
+  </div>
+  
+  <canvas id="simCanvas" width="760" height="520"></canvas>
+  
+  <div class="controls">
+    <div class="control-item">
+      <label>Mass (m)</label>
+      <input type="range" id="m" min="0.5" max="5" step="0.1" value="1.0">
+      <span id="mv">1.0</span>
+    </div>
+    <div class="control-item">
+      <label>Spring (k)</label>
+      <input type="range" id="k" min="2" max="25" step="0.5" value="10.0">
+      <span id="kv">10.0</span>
+    </div>
+    <div class="control-item">
+      <label>Damp (b)</label>
+      <input type="range" id="b" min="0" max="15" step="0.1" value="0.5">
+      <span id="bv">0.5</span>
+    </div>
+    <button onclick="resetSim()">Reset Mass</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- Physics Parameters ---
+let m = 1.0;     // Mass (kg)
+let k = 10.0;    // Spring constant (N/m)
+let b = 0.5;     // Damping coefficient (kg/s)
+let x = 2.0;     // Initial position (m)
+let v = 0.0;     // Initial velocity (m/s)
+
+// --- Simulation Constants ---
+const dt = 0.016; // Time step per frame (~60 FPS)
+const SCALE = 60; // Pixels per physical meter
+const ANCHOR_X = 150; 
+const ANCHOR_Y = 100;
+const MAX_HISTORY = 300; // Limit array size to save RAM
+
+// --- Data Logging ---
+let time = 0;
+let historyX = [];
+let historyV = [];
+let historyE = [];
+
+function getEnergy() {
+  return 0.5 * m * v * v + 0.5 * k * x * x;
+}
+
+function updatePhysics() {
+  // To ensure stability, we do 10 smaller sub-steps per frame
+  const sub_dt = dt / 10;
+  for(let i = 0; i < 10; i++) {
+    // Semi-Implicit Euler Method
+    // a = -(b/m)*v - (k/m)*x
+    let a = -(b / m) * v - (k / m) * x;
+    v += a * sub_dt;
+    x += v * sub_dt;
+    time += sub_dt;
+  }
+
+  // Manage memory footprint by keeping arrays fixed length
+  historyX.push(x);
+  historyV.push(v);
+  historyE.push(getEnergy());
+  
+  if (historyX.length > MAX_HISTORY) {
+    historyX.shift();
+    historyV.shift();
+    historyE.shift();
+  }
+}
+
+function updateUI() {
+  let b_crit = 2.0 * Math.sqrt(m * k);
+  document.getElementById('critical-b').textContent = b_crit.toFixed(2);
+  
+  let typeLabel = document.getElementById('damping-type');
+  if (b === 0) {
+    typeLabel.textContent = "Undamped";
+    typeLabel.style.color = "#00d2ff";
+  } else if (b < b_crit - 0.1) {
+    typeLabel.textContent = "Underdamped";
+    typeLabel.style.color = "#00d2ff";
+  } else if (Math.abs(b - b_crit) <= 0.1) {
+    typeLabel.textContent = "Critically Damped";
+    typeLabel.style.color = "#ffeb3b";
+  } else {
+    typeLabel.textContent = "Overdamped";
+    typeLabel.style.color = "#ff5722";
+  }
+}
+
+// --- Drawing Functions ---
+function drawSpring(endX) {
+  ctx.beginPath();
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 2;
+  ctx.moveTo(ANCHOR_X, ANCHOR_Y);
+  
+  let coils = 12;
+  let dist = endX - ANCHOR_X;
+  let coilWidth = dist / coils;
+  
+  for (let i = 1; i < coils; i++) {
+    let px = ANCHOR_X + i * coilWidth;
+    let py = ANCHOR_Y + (i % 2 === 0 ? 15 : -15);
+    ctx.lineTo(px, py);
+  }
+  ctx.lineTo(endX, ANCHOR_Y);
+  ctx.stroke();
+
+  // Draw Anchor Wall
+  ctx.fillStyle = '#444';
+  ctx.fillRect(ANCHOR_X - 20, ANCHOR_Y - 40, 20, 80);
+}
+
+function drawMass(posX) {
+  let size = 30 + (m * 5); // Visual size scales slightly with mass
+  ctx.fillStyle = '#00d2ff';
+  ctx.fillRect(posX, ANCHOR_Y - size/2, size, size);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(posX, ANCHOR_Y - size/2, size, size);
+  
+  ctx.fillStyle = '#fff';
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('m', posX + size/2, ANCHOR_Y + 4);
+}
+
+function drawGraph(data, x_offset, y_offset, width, height, color, title, scaleFactor) {
+  // Graph Background
+  ctx.fillStyle = '#18181f';
+  ctx.fillRect(x_offset, y_offset, width, height);
+  ctx.strokeStyle = '#2a2a35';
+  ctx.strokeRect(x_offset, y_offset, width, height);
+
+  // Center Line (0 axis)
+  ctx.beginPath();
+  ctx.strokeStyle = '#333';
+  ctx.moveTo(x_offset, y_offset + height/2);
+  ctx.lineTo(x_offset + width, y_offset + height/2);
+  ctx.stroke();
+
+  // Plot Data
+  if (data.length > 0) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    
+    let step = width / MAX_HISTORY;
+    for (let i = 0; i < data.length; i++) {
+      let px = x_offset + i * step;
+      let py = (y_offset + height/2) - (data[i] * scaleFactor);
+      
+      // Keep inside graph bounds
+      py = Math.max(y_offset, Math.min(y_offset + height, py));
+      
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  // Label
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(title, x_offset + 5, y_offset + 15);
+}
+
+function drawPhaseSpace(x_offset, y_offset, size) {
+  // Background
+  ctx.fillStyle = '#18181f';
+  ctx.fillRect(x_offset, y_offset, size, size);
+  ctx.strokeStyle = '#2a2a35';
+  ctx.strokeRect(x_offset, y_offset, size, size);
+
+  // Axes
+  ctx.beginPath();
+  ctx.strokeStyle = '#333';
+  ctx.moveTo(x_offset, y_offset + size/2);
+  ctx.lineTo(x_offset + size, y_offset + size/2);
+  ctx.moveTo(x_offset + size/2, y_offset);
+  ctx.lineTo(x_offset + size/2, y_offset + size);
+  ctx.stroke();
+
+  // Plot Phase Space (Velocity vs Position)
+  if (historyX.length > 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = '#b142f5'; // Purple
+    ctx.lineWidth = 1.5;
+    
+    for (let i = 0; i < historyX.length; i++) {
+      let px = x_offset + size/2 + (historyX[i] * 30);
+      let py = y_offset + size/2 - (historyV[i] * 15);
+      
+      // Clamp to edges to prevent drawing outside box
+      px = Math.max(x_offset, Math.min(x_offset + size, px));
+      py = Math.max(y_offset, Math.min(y_offset + size, py));
+
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  // Label
+  ctx.fillStyle = '#aaa';
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Phase Space (v vs x)', x_offset + 5, y_offset + 15);
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 1. Draw Physical Simulation
+  let blockX = ANCHOR_X + 150 + (x * SCALE); 
+  drawSpring(blockX);
+  drawMass(blockX);
+
+  // Center Equilibrium Line
+  ctx.beginPath();
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.moveTo(ANCHOR_X + 150, ANCHOR_Y - 50);
+  ctx.lineTo(ANCHOR_X + 150, ANCHOR_Y + 50);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#888';
+  ctx.fillText('Equilibrium', ANCHOR_X + 150, ANCHOR_Y + 65);
+
+  // 2. Draw Graphs (Scrolling Data)
+  drawGraph(historyX, 20, 200, 480, 80, '#00d2ff', 'Position (x)', 20);
+  drawGraph(historyV, 20, 300, 480, 80, '#ff9800', 'Velocity (v)', 10);
+  drawGraph(historyE, 20, 400, 480, 80, '#f44336', 'Energy (E)', 1.5);
+
+  // 3. Draw Phase Space Plot (Right Side)
+  drawPhaseSpace(520, 200, 220);
+}
+
+function animate() {
+  updatePhysics();
+  render();
+  requestAnimationFrame(animate);
+}
+
+// --- Input Handling ---
+function setupInput(id, varName) {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(id + 'v');
+  el.addEventListener('input', (e) => {
+    let val = parseFloat(e.target.value);
+    valEl.textContent = val.toFixed(1);
+    if (varName === 'm') m = val;
+    if (varName === 'k') k = val;
+    if (varName === 'b') b = val;
+    updateUI();
+  });
+}
+
+function resetSim() {
+  x = 2.0;
+  v = 0.0;
+  time = 0;
+  historyX = [];
+  historyV = [];
+  historyE = [];
+}
+
+setupInput('m', 'm');
+setupInput('k', 'k');
+setupInput('b', 'b');
+
+updateUI();
+animate();
+
+</script>
+</body>
+</html>

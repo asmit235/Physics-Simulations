@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relativistic Space-Time Grid</title>
+  <style>
+    body {
+      background: #000;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: monospace;
+      padding: 15px;
+      box-sizing: border-box;
+      color: #00ffcc;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 720px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      background: #020205;
+      display: block;
+      box-shadow: 0 4px 40px rgba(0, 255, 204, 0.15);
+      border: 1px solid #00ffcc33;
+    }
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 20px;
+      background: rgba(0, 255, 204, 0.05);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #00ffcc33;
+    }
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    input[type="range"] {
+      flex: 1;
+      accent-color: #00ffcc;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      outline: none;
+    }
+    .telemetry {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .telemetry span {
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <canvas id="space" width="720" height="300"></canvas>
+  
+  <div class="dashboard">
+    <div class="slider-group">
+      <label>THRUST (0 to 0.99c)</label>
+      <input type="range" id="throttle" min="0" max="0.99" step="0.01" value="0">
+    </div>
+    
+    <div class="telemetry">
+      <div>Velocity: <span id="v-readout">0.00 c</span></div>
+      <div>Lorentz Factor (γ): <span id="gamma-readout">1.000</span></div>
+      <div>Grid Compression: <span id="compression-readout">100%</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cv = document.getElementById('space');
+  const cx = cv.getContext('2d');
+  const W = 720, H = 300;
+  
+  let v = 0; 
+  let gamma = 1; 
+  let distanceTravelled = 0;
+
+  const baseGridSize = 60; // Normal size of a space-time square
+  const maxSimulatedSpeed = 1000; // Pixel speed at c
+
+  function drawRocket() {
+    const rx = 150; 
+    const ry = H / 2; 
+    
+    cx.save();
+    cx.translate(rx, ry);
+
+    // Thruster Flame
+    if (v > 0) {
+      const flameLength = 20 + (v * 120) + (Math.random() * 15);
+      cx.beginPath();
+      cx.moveTo(-30, 0);
+      cx.lineTo(-30 - flameLength, 6);
+      cx.lineTo(-30 - flameLength - 15, 0);
+      cx.lineTo(-30 - flameLength, -6);
+      
+      // Flame turns more blue/white at higher speeds
+      const flameBlue = Math.floor(v * 255);
+      cx.fillStyle = `rgba(${200 - flameBlue}, 255, 255, ${0.6 + (v * 0.4)})`;
+      cx.fill();
+    }
+
+    // Rocket Body
+    cx.beginPath();
+    cx.moveTo(40, 0);   
+    cx.lineTo(-30, 15); 
+    cx.lineTo(-20, 0);  
+    cx.lineTo(-30, -15);
+    cx.closePath();
+    cx.fillStyle = '#eeeeee';
+    cx.fill();
+
+    // Rocket Window
+    cx.beginPath();
+    cx.arc(10, 0, 5, 0, Math.PI * 2);
+    cx.fillStyle = '#00ffcc';
+    cx.fill();
+    
+    cx.restore();
+  }
+
+  function frame() {
+    // Clear canvas
+    cx.fillStyle = '#020205';
+    cx.fillRect(0, 0, W, H);
+
+    // Physics calculations
+    gamma = 1 / Math.sqrt(1 - (v * v));
+    
+    // Move through space
+    const currentSpeed = v * maxSimulatedSpeed;
+    distanceTravelled += currentSpeed;
+
+    // Update Dashboard
+    document.getElementById('v-readout').textContent = v.toFixed(2) + ' c';
+    document.getElementById('gamma-readout').textContent = gamma.toFixed(3);
+    document.getElementById('compression-readout').textContent = (100 / gamma).toFixed(1) + '%';
+
+    // --- DRAW SPACE-TIME GRID ---
+    cx.save();
+    
+    // Doppler Color Shift: Green at rest -> Cyan -> Pure Blue/White at near c
+    const blueValue = Math.floor(v * 255);
+    const greenValue = 255 - Math.floor(v * 100);
+    cx.strokeStyle = `rgba(0, ${greenValue}, ${blueValue + 100}, 0.4)`;
+    cx.lineWidth = 1;
+
+    // 1. Horizontal Lines (These DO NOT compress in special relativity!)
+    for (let y = 0; y <= H; y += baseGridSize) {
+      cx.beginPath();
+      cx.moveTo(0, y);
+      cx.lineTo(W, y);
+      cx.stroke();
+    }
+
+    // 2. Vertical Lines (These DO compress by the Lorentz Factor)
+    // Length Contraction Formula: L = L0 / gamma
+    let contractedSpacing = baseGridSize / gamma;
+    
+    // Safety check: if spacing gets microscopically small, group lines to prevent browser crash
+    let visualSpacing = contractedSpacing;
+    let multiplier = 1;
+    while (visualSpacing < 4) {
+        multiplier *= 5;
+        visualSpacing = contractedSpacing * multiplier;
+    }
+
+    // Calculate grid scrolling offset
+    const offset = (distanceTravelled / gamma) % visualSpacing;
+
+    // Draw the contracted vertical lines
+    for (let x = W + visualSpacing; x > -visualSpacing; x -= visualSpacing) {
+      cx.beginPath();
+      cx.moveTo(x - offset, 0);
+      cx.lineTo(x - offset, H);
+      
+      // Make lines thicker if we had to group them due to extreme compression
+      cx.lineWidth = multiplier > 1 ? 2 : 1; 
+      cx.stroke();
+    }
+    
+    cx.restore();
+
+    drawRocket();
+    requestAnimationFrame(frame);
+  }
+
+  // Hook up slider
+  document.getElementById('throttle').addEventListener('input', function(e) {
+    v = parseFloat(e.target.value);
+  });
+
+  frame();
+</script>
+</body>
+</html>

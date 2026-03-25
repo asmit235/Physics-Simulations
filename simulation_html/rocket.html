@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relativistic Rocket Simulation</title>
+  <style>
+    body {
+      background: #000;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: monospace; /* Monospace looks more like a sci-fi dashboard */
+      padding: 15px;
+      box-sizing: border-box;
+      color: #00ffcc;
+    }
+    .app-container {
+      width: 100%;
+      max-width: 720px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      background: #020205;
+      display: block;
+      box-shadow: 0 4px 40px rgba(0, 255, 204, 0.15);
+      border: 1px solid #00ffcc33;
+    }
+    .dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 20px;
+      background: rgba(0, 255, 204, 0.05);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid #00ffcc33;
+    }
+    .slider-group {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    label {
+      font-size: 14px;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    input[type="range"] {
+      flex: 1;
+      accent-color: #00ffcc;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      outline: none;
+    }
+    .telemetry {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .telemetry span {
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <canvas id="space" width="720" height="300"></canvas>
+  
+  <div class="dashboard">
+    <div class="slider-group">
+      <label>THRUST (0 to 0.99c)</label>
+      <input type="range" id="throttle" min="0" max="0.99" step="0.01" value="0">
+    </div>
+    
+    <div class="telemetry">
+      <div>Velocity: <span id="v-readout">0.00 c</span></div>
+      <div>Lorentz Factor (γ): <span id="gamma-readout">1.000</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cv = document.getElementById('space');
+  const cx = cv.getContext('2d');
+  const W = 720, H = 300;
+  
+  // v represents velocity as a fraction of the speed of light (0 to 0.99)
+  let v = 0; 
+  let gamma = 1; // Lorentz factor
+
+  // Generate a random starfield
+  const stars = [];
+  for (let i = 0; i < 350; i++) {
+    stars.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      z: Math.random() * 2 + 0.2 // Represents depth/base speed
+    });
+  }
+
+  function drawRocket() {
+    const rx = 100; // Rocket X position (fixed on screen)
+    const ry = H / 2; // Rocket Y position
+    
+    cx.save();
+    cx.translate(rx, ry);
+
+    // Rocket Thruster Flame (scales with speed)
+    if (v > 0) {
+      const flameLength = 20 + (v * 100) + (Math.random() * 10);
+      cx.beginPath();
+      cx.moveTo(-30, 0);
+      cx.lineTo(-30 - flameLength, 5);
+      cx.lineTo(-30 - flameLength - 10, 0);
+      cx.lineTo(-30 - flameLength, -5);
+      cx.fillStyle = `rgba(0, 255, 204, ${0.5 + (v * 0.5)})`;
+      cx.fill();
+    }
+
+    // Rocket Body
+    cx.beginPath();
+    cx.moveTo(40, 0);   // Nose
+    cx.lineTo(-30, 15); // Bottom right
+    cx.lineTo(-20, 0);  // Engine indent
+    cx.lineTo(-30, -15);// Top right
+    cx.closePath();
+    cx.fillStyle = '#eeeeee';
+    cx.fill();
+
+    // Rocket Window
+    cx.beginPath();
+    cx.arc(10, 0, 5, 0, Math.PI * 2);
+    cx.fillStyle = '#00ffcc';
+    cx.fill();
+    
+    cx.restore();
+  }
+
+  function frame() {
+    // Clear canvas with a very slight fade to allow for extreme speed blurring
+    cx.fillStyle = 'rgba(2, 2, 5, 0.4)';
+    cx.fillRect(0, 0, W, H);
+
+    // Calculate physics
+    // Gamma = 1 / sqrt(1 - v^2)
+    gamma = 1 / Math.sqrt(1 - (v * v));
+    
+    // Update dashboard text
+    document.getElementById('v-readout').textContent = v.toFixed(2) + ' c';
+    document.getElementById('gamma-readout').textContent = gamma.toFixed(3);
+
+    // Draw and move stars
+    cx.lineCap = "round";
+    
+    stars.forEach(star => {
+      // Base movement + relativistic speed movement
+      const moveSpeed = star.z * (1 + (v * 50 * gamma));
+      star.x -= moveSpeed;
+
+      // Wrap stars around the screen
+      if (star.x < 0) {
+        star.x = W;
+        star.y = Math.random() * H;
+      }
+
+      // Calculate star stretch based on speed and Lorentz factor
+      const stretch = Math.max(2, moveSpeed * 0.8);
+      
+      // Shift color from white to blue as we approach light speed
+      const blueShift = Math.floor(v * 255);
+      cx.strokeStyle = `rgb(${255 - blueShift}, 255, 255)`;
+      cx.lineWidth = Math.max(0.5, star.z * 0.8);
+
+      cx.beginPath();
+      cx.moveTo(star.x, star.y);
+      cx.lineTo(star.x + stretch, star.y);
+      cx.stroke();
+    });
+
+    drawRocket();
+
+    requestAnimationFrame(frame);
+  }
+
+  // Hook up the throttle slider
+  document.getElementById('throttle').addEventListener('input', function(e) {
+    v = parseFloat(e.target.value);
+  });
+
+  // Start the engine
+  frame();
+</script>
+</body>
+</html>

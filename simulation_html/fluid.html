@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Wave Physics</title>
+  <style>
+    body {
+      background: #050505;
+      color: #fff;
+      font-family: monospace;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .container {
+      max-width: 600px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      /* The canvas is displayed at 600x400 visually, but the internal math is smaller */
+      width: 600px;
+      height: 400px;
+      background: #000;
+      border: 1px solid #333;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 150, 255, 0.15);
+      cursor: crosshair;
+    }
+    .info {
+      margin-top: 15px;
+      font-size: 13px;
+      color: #aaa;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .highlight {
+      color: #00d2ff;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <canvas id="waterCanvas" width="300" height="200"></canvas>
+  
+  <div class="info">
+    Move your mouse over the canvas to transfer kinetic energy into the fluid.<br>
+    Demonstrating <span class="highlight">2D Wave Propagation</span> and <span class="highlight">Viscous Damping</span>.
+  </div>
+</div>
+
+<script>
+  const canvas = document.getElementById('waterCanvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Simulation dimensions (half the visual size for memory efficiency)
+  const width = canvas.width;
+  const height = canvas.height;
+  
+  // We use two buffers to track the "previous" state and "current" state of the waves
+  // Int32Array is highly memory efficient compared to standard JavaScript arrays
+  let buffer1 = new Int32Array(width * height);
+  let buffer2 = new Int32Array(width * height);
+  
+  // Damping defines how fast the water settles (1 = never settles, 0 = settles instantly)
+  const damping = 0.98;
+
+  // Create an ImageData object to directly manipulate pixels (fastest rendering method)
+  const pixelData = ctx.createImageData(width, height);
+  // Get a view into the pixel data as a 32-bit integer array for hyper-fast manipulation
+  const data32 = new Uint32Array(pixelData.data.buffer);
+
+  // Function to add a splash (energy) at a specific coordinate
+  function disturbSurface(x, y, radius, energy) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        // Only apply energy within a circular radius
+        if (dx * dx + dy * dy <= radius * radius) {
+          const px = x + dx;
+          const py = y + dy;
+          // Keep bounds inside the canvas to prevent memory out-of-bounds errors
+          if (px > 0 && px < width - 1 && py > 0 && py < height - 1) {
+            const index = px + py * width;
+            buffer1[index] += energy;
+          }
+        }
+      }
+    }
+  }
+
+  // Mouse Interaction Logic
+  let isMouseMoving = false;
+  let mouseX = 0;
+  let mouseY = 0;
+
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    // Map visual mouse coordinates back to our smaller simulation resolution
+    const scaleX = width / rect.width;
+    const scaleY = height / rect.height;
+    
+    mouseX = Math.floor((e.clientX - rect.left) * scaleX);
+    mouseY = Math.floor((e.clientY - rect.top) * scaleY);
+    
+    // Inject kinetic energy into the water surface
+    disturbSurface(mouseX, mouseY, 3, 500);
+  });
+
+  // The Main Physics Loop
+  function processWaves() {
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = x + y * width;
+        
+        // 2D Wave Equation: Average of the 4 direct neighbors, minus the current state
+        let waveHeight = (
+          buffer1[i - 1] +       // Left neighbor
+          buffer1[i + 1] +       // Right neighbor
+          buffer1[i - width] +   // Top neighbor
+          buffer1[i + width]     // Bottom neighbor
+        ) / 2 - buffer2[i];
+        
+        // Apply friction/viscosity
+        waveHeight *= damping;
+        
+        // Store the new calculated height
+        buffer2[i] = waveHeight;
+        
+        // --- RENDERING LOGIC ---
+        // Map the abstract wave height to a color scale (Black to Blue to Cyan)
+        let colorValue = Math.min(Math.max(waveHeight, 0), 255);
+        
+        // We write directly to the 32-bit pixel buffer for performance (AABBGGRR format)
+        // Alpha is always 255 (FF), Red is low, Green is medium, Blue is tied to the wave height
+        data32[i] = (255 << 24) | (colorValue << 16) | ((colorValue / 2) << 8) | 0;
+      }
+    }
+
+    // Swap the buffers for the next frame
+    let temp = buffer1;
+    buffer1 = buffer2;
+    buffer2 = temp;
+
+    // Draw the generated pixels to the canvas
+    ctx.putImageData(pixelData, 0, 0);
+
+    // Loop the animation
+    requestAnimationFrame(processWaves);
+  }
+
+  // Start the simulation
+  processWaves();
+</script>
+
+</body>
+</html>
